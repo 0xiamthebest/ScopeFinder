@@ -36,7 +36,7 @@ module_init() {
     local api_versions=( "" "/v1" "/v2" "/v3" "/v1.0" "/1.0" "/1.0.0" )
     local api_spec_files=(
         "openapi.json" "openapi.yaml" "swagger.json" "swagger.yaml"
-        "schema.json" "schema.yaml" "api-docs"
+        "schema.json" "schema.yaml" "api-docs" "doc.json"
     )
     local api_ui_files=(
         "swagger" "swagger-ui.html" "swagger/index.html"
@@ -115,12 +115,46 @@ is_openapi_spec() {
 }
 
 # Decide whether a response body is a rendered API-docs UI page.
+# Requires an actual UI asset/script marker (bundle filename, init call, root div
+# id) rather than a bare "swagger-ui" substring match: soft-404 pages (e.g. a CMS
+# 404 whose JSON-LD breadcrumb schema echoes the REQUESTED URL's slug, like
+# ".../swagger-ui.html") can otherwise contain that exact phrase with zero
+# connection to a real Swagger UI deployment.
 is_api_docs_ui() {
     local body="$1"
     [[ -n "$body" ]] || return 1
     # Here-string — see is_openapi_spec for why (pipefail + grep -q early-exit race).
-    grep -qiE 'swagger-?ui|swaggeruibundle|redoc|rapidoc|stoplight-elements|swagger ui' <<< "$body" && return 0
+    grep -qiE 'swagger-ui-bundle\.js|swagger-ui-standalone-preset\.js|swagger-ui\.css|SwaggerUIBundle\(|id=.swagger-ui.|swagger-ui\.js|redoc\.standalone\.js|<redoc[[:space:]>]|rapi-?doc\.min\.js|stoplight-elements|elements-api\.min\.js' <<< "$body" && return 0
     return 1
+}
+
+# Directory a UI page's sibling assets live in (Swagger UI serves
+# swagger-initializer.js next to index.html). "/swagger" and "/swagger/index.html"
+# both resolve to ".../swagger/"; "/swagger-ui.html" (file at root) resolves to ".../".
+ui_asset_dir() {
+    local url="$1"
+    [[ "$url" == */ ]] && { echo "$url"; return; }
+    local last="${url##*/}"
+    if [[ "$last" == *.* ]]; then
+        echo "${url%/*}/"
+    else
+        echo "${url}/"
+    fi
+}
+
+# Resolve a spec path found inside swagger-initializer.js against the UI's
+# directory (absolute URL, root-relative "/doc.json", or relative "doc.json").
+resolve_spec_url() {
+    local spec_path="$1" base_dir="$2"
+    if [[ "$spec_path" =~ ^https?:// ]]; then
+        echo "$spec_path"
+    elif [[ "$spec_path" == /* ]]; then
+        local origin
+        origin="$(printf '%s' "$base_dir" | sed -E 's#^(https?://[^/]+).*#\1#')"
+        echo "${origin}${spec_path}"
+    else
+        echo "${base_dir}${spec_path}"
+    fi
 }
 
 module_run() {
@@ -255,6 +289,40 @@ module_run() {
         # klass == ui
         echo -e "${candidate}\tui" >> "$confirmed_file"
         ((ui_count++)) || true
+
+        # A Swagger UI shell (index.html) never embeds the spec itself — since
+        # Swagger UI v4 the `url: "..."` config lives in a sibling
+        # swagger-initializer.js. Fetch it and follow the spec URL it points to.
+        local ui_dir init_body spec_path spec_url
+        ui_dir="$(ui_asset_dir "$candidate")"
+        pick_user_agent
+        init_body="$(curl -sk -m 10 -L --max-redirs 3 "${CURL_PROXY[@]}" \
+                        -A "$SELECTED_UA" \
+                        "${ui_dir}swagger-initializer.js" 2>/dev/null || true)"
+        if [[ -n "$init_body" ]]; then
+            spec_path="$(grep -oE 'url[[:space:]]*:[[:space:]]*["'"'"'][^"'"'"']+' <<< "$init_body" \
+                            | head -1 | sed -E 's/^url[[:space:]]*:[[:space:]]*["'"'"']//')"
+            if [[ -n "$spec_path" ]]; then
+                spec_url="$(resolve_spec_url "$spec_path" "$ui_dir")"
+                pick_user_agent
+                local spec_body
+                spec_body="$(curl -sk -m 10 -L --max-redirs 3 "${CURL_PROXY[@]}" \
+                                -A "$SELECTED_UA" \
+                                -H 'Accept: application/json, application/yaml' \
+                                "$spec_url" 2>/dev/null || true)"
+                if is_openapi_spec "$spec_body"; then
+                    local spec_slug spec_ext
+                    spec_slug="$(slugify_endpoint "$spec_url")"
+                    [[ -n "$spec_slug" ]] || spec_slug="endpoint"
+                    spec_ext="yaml"
+                    case "$spec_body" in *'"openapi"'*|*'"swagger"'*|*'"asyncapi"'*) spec_ext="json";; esac
+                    printf '%s' "$spec_body" > "${DIRS[API_DOCS_SPECS]}/${spec_slug}.${spec_ext}"
+                    echo -e "${spec_url}\tspec" >> "$confirmed_file"
+                    ((spec_count++)) || true
+                fi
+            fi
+        fi
+
         [[ "$tier" == "H" || "$stop_on_first" -eq 1 ]] && host_done[$host]=1
     done < "$candidates_file"
 
