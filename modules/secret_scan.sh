@@ -2,7 +2,7 @@
 # Secret scanning with jshunter and trufflehog
 
 MODULE_NAME="secret_scan"
-MODULE_DESC="Scan for secrets in downloaded content using jshunter and trufflehog"
+MODULE_DESC="Scan for secrets in downloaded content using jshunter, trufflehog and jsluice"
 
 module_init() {
     # Create output directories
@@ -86,6 +86,48 @@ module_run() {
         cat "${DIRS[SECRETS_ARTIFACTS]}"/trufflehog_*.txt > "${DIRS[SECRETS]}/${FILES[TRUFFLEHOG_ALL]}" 2>/dev/null || true
     else
         log_warn "trufflehog not found - skipping"
+    fi
+
+    # Run jsluice (AST-based JS parsing via tree-sitter) on each directory
+    if command -v jsluice &> /dev/null; then
+        log_info "Running jsluice..."
+
+        # Temporary file for collecting unique secrets
+        local temp_jsluice_secrets="${DIRS[SECRETS_ARTIFACTS]}/temp_all_jsluice_secrets.txt"
+        > "$temp_jsluice_secrets"
+
+        for name in "${!SCAN_TARGETS[@]}"; do
+            local dir="${SCAN_TARGETS[$name]}"
+            if [[ -d "$dir" ]]; then
+                # jsluice takes file arguments (or a file list on stdin), not a directory flag
+                find "$dir" -type f | jsluice secrets 2>/dev/null > "${DIRS[SECRETS_ARTIFACTS]}/jsluice_${name}.json" || true
+
+                # Extract secrets from the JSON-lines output and add to temp file
+                if [[ -f "${DIRS[SECRETS_ARTIFACTS]}/jsluice_${name}.json" ]]; then
+                    # Format: [Kind] Data (Source: filename)
+                    jq -r '"[\(.kind)] \(.data | tostring | gsub("\n"; " ")) (Source: \(.filename))"' \
+                        "${DIRS[SECRETS_ARTIFACTS]}/jsluice_${name}.json" 2>/dev/null >> "$temp_jsluice_secrets" || true
+                fi
+            fi
+        done
+
+        # Deduplicate secrets based on kind and value (ignoring source)
+        if [[ -f "$temp_jsluice_secrets" ]] && [[ -s "$temp_jsluice_secrets" ]]; then
+            awk -F' \\(Source: ' '
+            {
+                secret = $1
+                if (!seen[secret]++) {
+                    print $0
+                }
+            }' "$temp_jsluice_secrets" | sort > "${DIRS[SECRETS]}/${FILES[JSLUICE_ALL]}"
+        else
+            > "${DIRS[SECRETS]}/${FILES[JSLUICE_ALL]}"
+        fi
+
+        # Clean up temp file
+        rm -f "$temp_jsluice_secrets"
+    else
+        log_warn "jsluice not found - skipping"
     fi
 
     # Log completion

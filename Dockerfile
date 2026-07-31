@@ -181,6 +181,7 @@ RUN set -ex && \
     go install -v github.com/projectdiscovery/asnmap/cmd/asnmap@latest && \
     go install -v github.com/denandz/sourcemapper@latest && \
     go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest && \
+    go install -v github.com/BishopFox/jsluice/cmd/jsluice@latest && \
     echo "Public Go tools installed"
 
 # ============================================
@@ -283,6 +284,7 @@ RUN set -ex && \
     which uro && \
     which shosubgo && \
     which CloudRecon && \
+    which jsluice && \
     wpscan --version | head -1 && \
     x8 --version && \
     trufflehog --version && \

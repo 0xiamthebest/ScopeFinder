@@ -2,7 +2,7 @@
 # JavaScript analysis with linkfinder
 
 MODULE_NAME="linkfinder_analysis"
-MODULE_DESC="Find links in files with linkfinder & xnLinkFinder"
+MODULE_DESC="Find links in files with linkfinder, xnLinkFinder & jsluice"
 
 module_init() {
     # Collect all directories that contain JS/response files to analyze.
@@ -64,6 +64,19 @@ module_run() {
         for file in "${DIRS[XNLINKFINDER]}"/*.txt; do
             [[ -f "$file" ]] && dedupe_file "$file"
         done
+    fi
+
+    # Run jsluice (AST-based JS parsing via tree-sitter) against each source directory
+    if command -v jsluice &> /dev/null; then
+        log_info "Running jsluice..."
+        local jsluice_out="${DIRS[URLS_LINKFINDER]}/${FILES[JSLUICE_URLS]}"
+        > "$jsluice_out"
+        for dir in "${JS_DIRS[@]}"; do
+            find "$dir" -type f | jsluice urls 2>/dev/null | jq -r '.url' >> "$jsluice_out" 2>/dev/null || true
+        done
+        dedupe_file "$jsluice_out"
+    else
+        log_warn "jsluice not found - skipping AST-based JavaScript link analysis"
     fi
 
     # Count results
