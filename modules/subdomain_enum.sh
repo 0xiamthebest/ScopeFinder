@@ -30,6 +30,14 @@ module_run() {
     echo "$crtsh_tool_output" | grep -v '[DEBUG]' | grep -v '\*\.' >> "$SUBDOMAINS_FILE" || true
     echo "$crtsh_tool_output" | grep -v '[DEBUG]' | grep '\*\.' >> "$WILDCARD_FILE" || true
 
+    # Run crt.name (plaintext, one hostname per line; may include *. wildcards)
+    log_info "Running crt.name..."
+    pick_user_agent
+    crtname_output=$(curl -s --max-time 60 -A "$SELECTED_UA" \
+        "https://crt.name/v1/search?apex=${DOMAIN}" 2>/dev/null || true)
+    echo "$crtname_output" | grep -v '\*\.' >> "$SUBDOMAINS_FILE" || true
+    echo "$crtname_output" | grep '\*\.' >> "$WILDCARD_FILE" || true
+
     # Run shosubgo
     log_info "Running shosubgo..."
     if [[ -n "${SHODAN_API_KEY:-}" ]]; then

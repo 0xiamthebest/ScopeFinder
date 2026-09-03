@@ -21,11 +21,13 @@ declare -a MODULES_ORDER=(
     "extract_inline_scripts"     # Extract inline scripts with dynamic URLs
     "extract_params"       # URL sorting and parameter extraction
     "httpx_url_probe"            # URL deduplication and live probing
-    "graphql_probe"        # Discover, confirm, audit GraphQL endpoints and export SDL
-    "api_docs_probe"       # Discover, confirm API docs (OpenAPI/Swagger/ReDoc) and save specs
     "js_download"          # JavaScript file download
     "linkfinder_analysis"  # Find links (linkfinder)
     "secret_scan"          # Secret scanning (jshunter, trufflehog)
+    # graphql/api_docs probing is time-consuming - run it after the faster
+    # web-recon modules above so quick results land first.
+    "graphql_probe"        # Discover, confirm, audit GraphQL endpoints and export SDL
+    "api_docs_probe"       # Discover, confirm API docs (OpenAPI/Swagger/ReDoc) and save specs
     "cloud_recon"          # Cloud reconnaissance (msftrecon, SNI)
     # "burp_prep"          # Burp Suite prep and x8 fuzzing - commented to match original
     "asn_discovery"        # ASN range discovery

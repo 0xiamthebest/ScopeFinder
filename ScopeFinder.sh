@@ -112,7 +112,10 @@ parse_args() {
                 exit 1
                 ;;
             *)
-                DOMAIN="$1"
+                # Always normalize the domain to lowercase - hostnames are
+                # case-insensitive and downstream tools/dedup treat differing
+                # cases as distinct entries otherwise.
+                DOMAIN="${1,,}"
                 shift
                 ;;
         esac
