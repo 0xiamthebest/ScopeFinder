@@ -14,6 +14,9 @@ module_init() {
     [[ -d "${DIRS[JS_DOWNLOADED]}" ]] && SCAN_TARGETS["downloaded_js"]="${DIRS[JS_DOWNLOADED]}"
     [[ -d "${DIRS[WAYMORE_DATA]}" ]] && SCAN_TARGETS["waymore"]="${DIRS[WAYMORE_DATA]}"
     [[ -d "${DIRS[KATANA_DATA]}" ]] && SCAN_TARGETS["katana"]="${DIRS[KATANA_DATA]}"
+    # Reconstructed original sources (from js_sourcemap) carry sourcesContent and
+    # unminified code, a high-signal target for secret scanning.
+    [[ -d "${DIRS[JS_RECONSTRUCTED]}" ]] && SCAN_TARGETS["reconstructed_js"]="${DIRS[JS_RECONSTRUCTED]}"
 }
 
 module_run() {

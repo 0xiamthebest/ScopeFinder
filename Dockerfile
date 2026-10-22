@@ -5,8 +5,10 @@
 # Optimized for size and build speed
 # ============================================
 
-# Use slim base for smaller image
-FROM debian:bookworm-slim
+# Use slim base for smaller image.
+# Pinned by digest for reproducible builds / supply-chain integrity.
+# Bump deliberately: docker buildx imagetools inspect debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8
 
 # Build arguments for multi-architecture support
 ARG TARGETPLATFORM
@@ -92,20 +94,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ============================================
 # Install Golang with multi-arch support
 # ============================================
+# Pinned Go toolchain + per-arch tarball checksum verification.
+# Bump: pick a version from https://go.dev/dl/?mode=json and update the sha256s.
+ARG GO_VERSION=1.27.3
+ARG GO_SHA256_AMD64=65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40
+ARG GO_SHA256_ARM64=a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49
 RUN set -ex && \
-    GO_VERSION=$(curl -fsSL "https://go.dev/dl/?mode=json" | grep -oP '"version":\s*"go\K[^"]+' | head -1) && \
     if [ -z "${TARGETARCH}" ]; then \
         TARGETARCH="$(dpkg --print-architecture)"; \
     fi && \
     case "${TARGETARCH}" in \
-        amd64|arm64) \
-            GO_TARBALL="go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
-            ;; \
-        *) \
-            echo "Unsupported architecture: ${TARGETARCH}" && exit 1 \
-            ;; \
+        amd64) GO_TARBALL="go${GO_VERSION}.linux-amd64.tar.gz"; GO_SHA256="${GO_SHA256_AMD64}" ;; \
+        arm64) GO_TARBALL="go${GO_VERSION}.linux-arm64.tar.gz"; GO_SHA256="${GO_SHA256_ARM64}" ;; \
+        *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac && \
     wget -q "https://go.dev/dl/${GO_TARBALL}" && \
+    echo "${GO_SHA256}  ${GO_TARBALL}" | sha256sum -c - && \
     tar -C /usr/local -xzf "${GO_TARBALL}" && \
     rm "${GO_TARBALL}" && \
     /usr/local/go/bin/go version
@@ -113,6 +117,10 @@ RUN set -ex && \
 # ============================================
 # Install Rust
 # ============================================
+# NOTE: rustup toolchain floats on "stable". x8 below is version-pinned; we do
+# NOT pass --locked because x8's shipped Cargo.lock pins an ancient `time` crate
+# that fails to compile on current rustc. Cargo still verifies registry checksums
+# for every resolved dep. Pin a toolchain here for fully reproducible Rust builds.
 RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
 
 # ============================================
@@ -147,20 +155,21 @@ RUN set -ex && \
 # Install TruffleHog with multi-arch support
 # ============================================
 ARG TRUFFLEHOG_VERSION=3.94.2
+# Per-arch release checksums (from trufflehog_${VERSION}_checksums.txt).
+ARG TRUFFLEHOG_SHA256_AMD64=6ff6854f7f663c208c23a3d9be37d2333d15857c28cbe7f008a7fc910a88768d
+ARG TRUFFLEHOG_SHA256_ARM64=63cdfa87a7f0678774d485574cabacb72ecfc306b4be96f0aafcb41f08de3514
 RUN set -ex && \
     # Detect architecture if not set
     if [ -z "${TARGETARCH}" ]; then \
         TARGETARCH="$(dpkg --print-architecture)"; \
     fi && \
     case "${TARGETARCH}" in \
-        amd64|arm64) \
-            FILENAME="trufflehog_${TRUFFLEHOG_VERSION}_linux_${TARGETARCH}.tar.gz" \
-            ;; \
-        *) \
-            echo "Unsupported architecture: ${TARGETARCH}" && exit 1 \
-            ;; \
+        amd64) FILENAME="trufflehog_${TRUFFLEHOG_VERSION}_linux_amd64.tar.gz"; TH_SHA256="${TRUFFLEHOG_SHA256_AMD64}" ;; \
+        arm64) FILENAME="trufflehog_${TRUFFLEHOG_VERSION}_linux_arm64.tar.gz"; TH_SHA256="${TRUFFLEHOG_SHA256_ARM64}" ;; \
+        *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac && \
     wget -q "https://github.com/trufflesecurity/trufflehog/releases/download/v${TRUFFLEHOG_VERSION}/${FILENAME}" && \
+    echo "${TH_SHA256}  ${FILENAME}" | sha256sum -c - && \
     tar -xzf "${FILENAME}" && \
     mv trufflehog /usr/local/bin/ && \
     chmod +x /usr/local/bin/trufflehog && \
@@ -168,25 +177,32 @@ RUN set -ex && \
     trufflehog --version
 
 # ============================================
-# Install public Go tools (using @latest as requested)
+# Install public Go tools (pinned: semver tag where available, else commit SHA
+# for untagged tools like sourcemapper/jsluice). Bump via Renovate (renovate.json).
 # ============================================
 RUN set -ex && \
     export PATH="/usr/local/go/bin:$PATH" && \
     export GOBIN="/root/go/bin" && \
-    go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
-    go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest && \
-    go install -v github.com/s0md3v/smap/cmd/smap@latest && \
-    go install -v github.com/incogbyte/shosubgo@latest && \
-    go install -v github.com/g0ldencybersec/CloudRecon@latest && \
-    go install -v github.com/projectdiscovery/asnmap/cmd/asnmap@latest && \
-    go install -v github.com/denandz/sourcemapper@latest && \
-    go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest && \
-    go install -v github.com/BishopFox/jsluice/cmd/jsluice@latest && \
+    go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@v2.17.0 && \
+    go install -v github.com/projectdiscovery/httpx/cmd/httpx@v1.12.0 && \
+    go install -v github.com/s0md3v/smap/cmd/smap@v1.0.0-beta && \
+    go install -v github.com/incogbyte/shosubgo@ccb6dc7bf0ef130fef0a6948acfec1235b26d81f && \
+    go install -v github.com/g0ldencybersec/CloudRecon@8893d40372cee7b55e2b20073283c7bb812f2a25 && \
+    go install -v github.com/projectdiscovery/asnmap/cmd/asnmap@v1.1.1 && \
+    go install -v github.com/denandz/sourcemapper@f739bd5dd266b0d0e2cfa17c0a132f79bd9a5ba9 && \
+    go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@v3.11.1 && \
+    go install -v github.com/BishopFox/jsluice/cmd/jsluice@0ddfab153e060a9eeaded4d8669233f7c071e7e4 && \
     echo "Public Go tools installed"
 
 # ============================================
 # Bake nuclei templates into the image (faster runtime updates)
 # ============================================
+# SUPPLY-CHAIN NOTE: the nuclei binary is pinned above, but its detection
+# templates are the one intentionally-fresh component — they are ProjectDiscovery
+# -maintained YAML rules, fetched here at build time and refreshed at runtime by
+# the subdomain_takeover module. To lock templates too, replace the command below
+# with a pinned clone (git clone --depth 1 -b vX.Y.Z nuclei-templates into nuclei's
+# templates dir) and gate the runtime `nuclei -update-templates` in that module.
 RUN set -ex && \
     export PATH="/root/go/bin:$PATH" && \
     nuclei -update-templates && \
@@ -195,14 +211,17 @@ RUN set -ex && \
 # ============================================
 # Install katana from 0xQRx fork (adds -ss scroll simulation)
 # ============================================
+# Pinned to a specific commit on the fork's dev branch (not a moving branch tip).
+ARG KATANA_COMMIT=55f1ac9dbda4d42321811d837b77d3fb11c9aacf
 RUN set -ex && \
     export PATH="/usr/local/go/bin:$PATH" && \
     export GOBIN="/root/go/bin" && \
-    git clone --depth=1 -b dev https://github.com/0xQRx/katana.git /tmp/katana && \
+    git clone https://github.com/0xQRx/katana.git /tmp/katana && \
     cd /tmp/katana && \
+    git checkout "${KATANA_COMMIT}" && \
     CGO_ENABLED=1 go build -o "${GOBIN}/katana" ./cmd/katana/ && \
     rm -rf /tmp/katana && \
-    echo "Katana (0xQRx fork) installed"
+    echo "Katana (0xQRx fork @ ${KATANA_COMMIT}) installed"
 
 # ============================================
 # Install private Go tools (with GOPRIVATE)
@@ -210,10 +229,10 @@ RUN set -ex && \
 RUN set -ex && \
     export PATH="/usr/local/go/bin:$PATH" && \
     export GOBIN="/root/go/bin" && \
-    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/crtsh-tool/cmd/crtsh-tool@main && \
-    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/jshunter@main && \
-    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/godigger@main && \
-    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/URLDedup/cmd/urldedup@main && \
+    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/crtsh-tool/cmd/crtsh-tool@edf1f50b8fe95a4933576e0377168aeaee94a779 && \
+    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/jshunter@1808b250f70765e527868f09ea9da2d63551e881 && \
+    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/godigger@09387d4afa9df874bb9ef89431be967353bed2a0 && \
+    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/URLDedup/cmd/urldedup@3a9a20bb1b735aa5ac0b7f81c9cf5c540e0cd4ca && \
     echo "Private Go tools installed"
 
 # ============================================
@@ -221,18 +240,20 @@ RUN set -ex && \
 # ============================================
 RUN set -ex && \
     export PATH="/root/.local/bin:$PATH" && \
-    pipx install git+https://github.com/xnl-h4ck3r/waymore.git && \
-    pipx install git+https://github.com/0xQRx/LinkFinder.git --include-deps && \
-    pipx install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git && \
-    pipx install git+https://github.com/0xQRx/msftrecon.git && \
-    pipx install uro && \
-    pipx install git+https://github.com/0xQRx/graphql-cop.git && \
+    pipx install "git+https://github.com/xnl-h4ck3r/waymore.git@v8.9" && \
+    pipx install "git+https://github.com/0xQRx/LinkFinder.git@194431c6b2e53cea9598c2bae22fe0cd2a0a18a4" --include-deps && \
+    pipx install "git+https://github.com/xnl-h4ck3r/xnLinkFinder.git@v8.2" && \
+    pipx install "git+https://github.com/0xQRx/msftrecon.git@fd6d66304eb0166e80ad875b98e3fd113d446c62" && \
+    pipx install "uro==1.0.2" && \
+    pipx install "git+https://github.com/0xQRx/graphql-cop.git@ed61858ef12b555a887dd194cc6b6ff4b79e10ec" && \
     echo "Python tools installed"
 
 # ============================================
 # Install Ruby tools
 # ============================================
-RUN gem install wpscan && \
+# 3.8.28 is the newest wpscan supporting the base image's Ruby (3.1); 4.x needs
+# Ruby >= 3.3. Bump in lockstep with a Ruby upgrade.
+RUN gem install wpscan -v 3.8.28 && \
     wpscan --version && \
     echo "Ruby tools installed"
 
@@ -241,7 +262,7 @@ RUN gem install wpscan && \
 # ============================================
 RUN set -ex && \
     export PATH="/root/.cargo/bin:$PATH" && \
-    cargo install x8 && \
+    cargo install x8 --version 4.3.2 && \
     echo "Rust tools installed"
 
 # ============================================
@@ -249,7 +270,7 @@ RUN set -ex && \
 # ============================================
 RUN mkdir -p /wordlists && \
     cd /wordlists && \
-    wget -q https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Discovery/Web-Content/burp-parameter-names.txt && \
+    wget -q https://raw.githubusercontent.com/danielmiessler/SecLists/2026.1/Discovery/Web-Content/burp-parameter-names.txt && \
     echo "Wordlists downloaded"
 
 # ============================================
