@@ -15,6 +15,11 @@ module_init() {
         JS_DIRS+=("${DIRS[JS_DOWNLOADED]}")
     [[ -d "${DIRS[KATANA_DATA]}" ]] && [[ -n "$(ls -A "${DIRS[KATANA_DATA]}" 2>/dev/null)" ]] && \
         JS_DIRS+=("${DIRS[KATANA_DATA]}")
+    # js_reconstructed_sources/ — original source trees rebuilt from .map files
+    #   (via js_sourcemap). Unminified source exposes far more endpoints than
+    #   the shipped bundle, so analyze it too when present.
+    [[ -d "${DIRS[JS_RECONSTRUCTED]}" ]] && [[ -n "$(ls -A "${DIRS[JS_RECONSTRUCTED]}" 2>/dev/null)" ]] && \
+        JS_DIRS+=("${DIRS[JS_RECONSTRUCTED]}")
 
     if [[ ${#JS_DIRS[@]} -eq 0 ]]; then
         log_info "No JavaScript files found from previous steps - skipping JS analysis"

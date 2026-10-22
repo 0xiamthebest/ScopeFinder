@@ -22,6 +22,8 @@ declare -a MODULES_ORDER=(
     "extract_params"       # URL sorting and parameter extraction
     "httpx_url_probe"            # URL deduplication and live probing
     "js_download"          # JavaScript file download
+    "js_chunk_discovery"   # Discover/download lazy-loaded & webpack JS chunks
+    "js_sourcemap"         # Recover source maps, reconstruct original JS source
     "linkfinder_analysis"  # Find links (linkfinder)
     "secret_scan"          # Secret scanning (jshunter, trufflehog)
     # graphql/api_docs probing is time-consuming - run it after the faster
