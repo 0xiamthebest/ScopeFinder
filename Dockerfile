@@ -93,7 +93,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Golang with multi-arch support
 # ============================================
 RUN set -ex && \
-    GO_VERSION=$(curl -fsSL "https://go.dev/dl/?mode=json" | grep -oP '"version":\s*"go\K[^"]+' | head -1) && \
+    GO_VERSION=1.27.3 && \
     if [ -z "${TARGETARCH}" ]; then \
         TARGETARCH="$(dpkg --print-architecture)"; \
     fi && \
@@ -168,21 +168,35 @@ RUN set -ex && \
     trufflehog --version
 
 # ============================================
-# Install public Go tools (using @latest as requested)
+# Install public Go tools (version-pinned; see commit for how pins were captured)
 # ============================================
 RUN set -ex && \
     export PATH="/usr/local/go/bin:$PATH" && \
     export GOBIN="/root/go/bin" && \
-    go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
-    go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest && \
-    go install -v github.com/s0md3v/smap/cmd/smap@latest && \
-    go install -v github.com/incogbyte/shosubgo@latest && \
-    go install -v github.com/g0ldencybersec/CloudRecon@latest && \
-    go install -v github.com/projectdiscovery/asnmap/cmd/asnmap@latest && \
-    go install -v github.com/denandz/sourcemapper@latest && \
-    go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest && \
-    go install -v github.com/BishopFox/jsluice/cmd/jsluice@latest && \
-    echo "Public Go tools installed"
+    go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@v2.17.0 && \
+    go install -v github.com/projectdiscovery/httpx/cmd/httpx@v1.12.0 && \
+    go install -v github.com/s0md3v/smap/cmd/smap@v1.0.0-beta && \
+    go install -v github.com/incogbyte/shosubgo@v0.0.0-20250901210855-ccb6dc7bf0ef && \
+    go install -v github.com/g0ldencybersec/CloudRecon@v1.0.4 && \
+    go install -v github.com/projectdiscovery/asnmap/cmd/asnmap@v1.2.0 && \
+    go install -v github.com/denandz/sourcemapper@v0.0.0-20260724091236-f739bd5dd266 && \
+    go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@v3.11.1 && \
+    go install -v github.com/BishopFox/jsluice/cmd/jsluice@v0.0.0-20240110145140-0ddfab153e06 && \
+    go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@v1.3.1 && \
+    go install -v github.com/d3mondev/puredns/v2@v2.1.1 && \
+    go install -v github.com/projectdiscovery/alterx/cmd/alterx@v0.1.0 && \
+    echo "Public Go tools installed (pinned)"
+
+# ============================================
+# Install massdns (puredns backend — not a Go tool)
+# ============================================
+RUN set -ex && \
+    git clone https://github.com/blechschmidt/massdns.git /tmp/massdns && \
+    git -C /tmp/massdns checkout 30c380908b4f9afd0931d3d83f85884844831846 && \
+    make -C /tmp/massdns && \
+    cp /tmp/massdns/bin/massdns /usr/local/bin/massdns && \
+    rm -rf /tmp/massdns && \
+    test -x /usr/local/bin/massdns && echo "massdns installed"
 
 # ============================================
 # Bake nuclei templates into the image (faster runtime updates)
@@ -198,8 +212,9 @@ RUN set -ex && \
 RUN set -ex && \
     export PATH="/usr/local/go/bin:$PATH" && \
     export GOBIN="/root/go/bin" && \
-    git clone --depth=1 -b dev https://github.com/0xQRx/katana.git /tmp/katana && \
+    git clone https://github.com/0xQRx/katana.git /tmp/katana && \
     cd /tmp/katana && \
+    git checkout 55f1ac9dbda4d42321811d837b77d3fb11c9aacf && \
     CGO_ENABLED=1 go build -o "${GOBIN}/katana" ./cmd/katana/ && \
     rm -rf /tmp/katana && \
     echo "Katana (0xQRx fork) installed"
@@ -210,10 +225,10 @@ RUN set -ex && \
 RUN set -ex && \
     export PATH="/usr/local/go/bin:$PATH" && \
     export GOBIN="/root/go/bin" && \
-    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/crtsh-tool/cmd/crtsh-tool@main && \
-    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/jshunter@main && \
-    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/godigger@main && \
-    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/URLDedup/cmd/urldedup@main && \
+    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/crtsh-tool/cmd/crtsh-tool@v0.1.2-0.20250213205049-edf1f50b8fe9 && \
+    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/jshunter@v0.0.0-20251006173918-1808b250f707 && \
+    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/godigger@v0.0.0-20250221150905-09387d4afa9d && \
+    GOPRIVATE=github.com/0xQRx go install -v github.com/0xQRx/URLDedup/cmd/urldedup@v0.0.0-20250221170338-3a9a20bb1b73 && \
     echo "Private Go tools installed"
 
 # ============================================
@@ -221,18 +236,21 @@ RUN set -ex && \
 # ============================================
 RUN set -ex && \
     export PATH="/root/.local/bin:$PATH" && \
-    pipx install git+https://github.com/xnl-h4ck3r/waymore.git && \
-    pipx install git+https://github.com/0xQRx/LinkFinder.git --include-deps && \
-    pipx install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git && \
-    pipx install git+https://github.com/0xQRx/msftrecon.git && \
-    pipx install uro && \
-    pipx install git+https://github.com/0xQRx/graphql-cop.git && \
-    echo "Python tools installed"
+    pipx install git+https://github.com/xnl-h4ck3r/waymore.git@4e02de512fd6b110be92dc8bffb3002edfebcb6c && \
+    pipx install git+https://github.com/0xQRx/LinkFinder.git@194431c6b2e53cea9598c2bae22fe0cd2a0a18a4 --include-deps && \
+    pipx install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git@841ac8dddbc7edd728939df5db51274a63ab5863 && \
+    pipx install git+https://github.com/0xQRx/msftrecon.git@fd6d66304eb0166e80ad875b98e3fd113d446c62 && \
+    pipx install uro==1.0.2 && \
+    pipx install git+https://github.com/0xQRx/graphql-cop.git@ed61858ef12b555a887dd194cc6b6ff4b79e10ec && \
+    echo "Python tools installed (pinned)"
 
 # ============================================
 # Install Ruby tools
 # ============================================
-RUN gem install wpscan && \
+# nokogiri (a wpscan dep) otherwise compiles its own vendored libxslt and fails
+# to link libexslt.a; the system libxml2-dev/libxslt1-dev are installed above, so
+# force nokogiri to build against them.
+RUN NOKOGIRI_USE_SYSTEM_LIBRARIES=1 gem install wpscan -v 3.8.28 && \
     wpscan --version && \
     echo "Ruby tools installed"
 
@@ -249,8 +267,16 @@ RUN set -ex && \
 # ============================================
 RUN mkdir -p /wordlists && \
     cd /wordlists && \
-    wget -q https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Discovery/Web-Content/burp-parameter-names.txt && \
+    wget -q https://raw.githubusercontent.com/danielmiessler/SecLists/4afe4d3de0a5d227c59ae2f162d22b93b4c27bfd/Discovery/Web-Content/burp-parameter-names.txt && \
+    wget -q -O dns-subdomains.txt https://raw.githubusercontent.com/danielmiessler/SecLists/4afe4d3de0a5d227c59ae2f162d22b93b4c27bfd/Discovery/DNS/subdomains-top1million-110000.txt && \
     echo "Wordlists downloaded"
+
+# ============================================
+# Baseline DNS resolvers for puredns/dnsx (validate+refresh at runtime)
+# ============================================
+RUN mkdir -p /resolvers && \
+    wget -q -O /resolvers/resolvers.txt https://raw.githubusercontent.com/trickest/resolvers/main/resolvers.txt && \
+    echo "Resolvers downloaded"
 
 # ============================================
 # Set up final environment variables and PATH
@@ -285,6 +311,10 @@ RUN set -ex && \
     which shosubgo && \
     which CloudRecon && \
     which jsluice && \
+    dnsx -version 2>/dev/null | head -1 && \
+    alterx -version 2>/dev/null | head -1 && \
+    which puredns && \
+    which massdns && \
     wpscan --version | head -1 && \
     x8 --version && \
     trufflehog --version && \
