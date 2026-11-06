@@ -18,7 +18,7 @@ module_run() {
     # Run xnLinkFinder on waymore data
     if [[ -d "${DIRS[WAYMORE_DATA]}" ]] && command -v xnLinkFinder &> /dev/null; then
         log_info "Running xnLinkFinder on archived data..."
-        xnLinkFinder -i "${DIRS[WAYMORE_DATA]}" \
+        run_xnlinkfinder "${DIRS[WAYMORE_DATA]}" \
                      -sp "$DOMAIN" -sf "$DOMAIN" \
                      -o "${DIRS[URLS_ARTIFACTS]}/xnLinkFinder_archive_output.txt" \
                      -op "${DIRS[URLS_ARTIFACTS]}/xnLinkFinder_archive_parameters.txt" \
@@ -28,7 +28,7 @@ module_run() {
     # Run xnLinkFinder on katana data
     if [[ -d "${DIRS[KATANA_DATA]}" ]] && command -v xnLinkFinder &> /dev/null; then
         log_info "Running xnLinkFinder on crawled data..."
-        xnLinkFinder -i "${DIRS[KATANA_DATA]}" \
+        run_xnlinkfinder "${DIRS[KATANA_DATA]}" \
                      -sp "$DOMAIN" -sf "$DOMAIN" \
                      -o "${DIRS[URLS_ARTIFACTS]}/xnLinkFinder_crawl_output.txt" \
                      -op "${DIRS[URLS_ARTIFACTS]}/xnLinkFinder_crawl_parameters.txt" \
