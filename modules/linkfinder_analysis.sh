@@ -59,7 +59,7 @@ module_run() {
     if command -v xnLinkFinder &> /dev/null; then
         log_info "Running xnLinkFinder on JavaScript files..."
         for dir in "${JS_DIRS[@]}"; do
-            xnLinkFinder -i "$dir" \
+            run_xnlinkfinder "$dir" \
                          -sp "$DOMAIN" -sf "$DOMAIN" \
                          -o "${DIRS[XNLINKFINDER]}/${FILES[XNLINKFINDER_JS_OUTPUT]}" \
                          -op "${DIRS[XNLINKFINDER]}/${FILES[XNLINKFINDER_JS_PARAMS]}" \

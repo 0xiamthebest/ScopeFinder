@@ -96,6 +96,17 @@ slugify_endpoint() {
     echo "$stripped" | sed -E 's/[^A-Za-z0-9._-]/_/g' | sed -E 's/_+/_/g;s/^_//;s/_$//'
 }
 
+# Output path for a saved spec: <slug>.<ext>, without doubling the extension
+# when the URL already ends in it (".../openapi.json" -> *_openapi.json, not
+# *_openapi.json.json). Only an identical suffix is dropped, so openapi.yaml
+# served as JSON still gets a distinct name from openapi.json.
+spec_out_path() {
+    local slug="$1" ext="$2"
+    [[ "$ext" == "yaml" && "$slug" == *.yml ]] && slug="${slug%.yml}"
+    slug="${slug%.${ext}}"
+    printf '%s/%s.%s' "${DIRS[API_DOCS_SPECS]}" "$slug" "$ext"
+}
+
 # Decide whether a response body is an OpenAPI/Swagger/AsyncAPI spec document.
 # Matches both JSON (quoted keys) and YAML (top-level key) spec files.
 is_openapi_spec() {
@@ -277,7 +288,7 @@ module_run() {
             # Save the spec document (JSON if it looks like JSON, else YAML)
             local ext="yaml"
             case "$body" in *'"openapi"'*|*'"swagger"'*|*'"asyncapi"'*) ext="json";; esac
-            printf '%s' "$body" > "${DIRS[API_DOCS_SPECS]}/${slug}.${ext}"
+            printf '%s' "$body" > "$(spec_out_path "$slug" "$ext")"
             echo -e "${candidate}\tspec" >> "$confirmed_file"
             ((spec_count++)) || true
             # Harvested hit always skips this host's active probing; active hit does
@@ -316,7 +327,7 @@ module_run() {
                     [[ -n "$spec_slug" ]] || spec_slug="endpoint"
                     spec_ext="yaml"
                     case "$spec_body" in *'"openapi"'*|*'"swagger"'*|*'"asyncapi"'*) spec_ext="json";; esac
-                    printf '%s' "$spec_body" > "${DIRS[API_DOCS_SPECS]}/${spec_slug}.${spec_ext}"
+                    printf '%s' "$spec_body" > "$(spec_out_path "$spec_slug" "$spec_ext")"
                     echo -e "${spec_url}\tspec" >> "$confirmed_file"
                     ((spec_count++)) || true
                 fi

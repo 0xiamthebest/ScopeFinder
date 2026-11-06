@@ -264,13 +264,20 @@ main() {
     init_dirs "$DOMAIN"
 
     # Handle fresh run - clear checkpoints before proceeding
+    # (--dry-run must not mutate state: it only reports what would run.)
     if [[ "$FRESH_RUN" == "true" ]]; then
-        log_info "Fresh run requested - clearing all checkpoints"
-        reset_checkpoints
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_info "[dry-run] Would clear all checkpoints (--fresh)"
+        else
+            log_info "Fresh run requested - clearing all checkpoints"
+            reset_checkpoints
+        fi
     fi
 
     # Handle replay-from - clear checkpoints from specified module onwards
-    if [[ -n "$FROM_MODULE" ]]; then
+    if [[ -n "$FROM_MODULE" && "$DRY_RUN" == "true" ]]; then
+        log_info "[dry-run] Would clear checkpoints from $FROM_MODULE onwards"
+    elif [[ -n "$FROM_MODULE" ]]; then
         log_info "Clearing checkpoints from $FROM_MODULE onwards"
         # Load modules to get the order
         load_all_modules
@@ -336,7 +343,10 @@ main() {
         # problems that were previously swallowed by "|| true / 2>/dev/null"
         # are visible at a glance instead of buried in per-module output.
         local total_warn mods_with
-        total_warn=$(cat "${DIRS[CHECKPOINTS_DIR]}"/*.warnings 2>/dev/null | grep -c . || echo 0)
+        # grep -c already prints "0" on no match (exiting 1), so swallow the
+        # status with "|| true" - "|| echo 0" would yield "0\n0" and break the
+        # numeric comparison below.
+        total_warn=$(cat "${DIRS[CHECKPOINTS_DIR]}"/*.warnings 2>/dev/null | grep -c . || true)
         mods_with=$(find "${DIRS[CHECKPOINTS_DIR]}" -name '*.warnings' -size +0c 2>/dev/null | wc -l | tr -d ' ')
         if [[ "${total_warn:-0}" -gt 0 ]]; then
             echo -e "${YELLOW}⚠ Run completed with ${total_warn} warning(s)/error(s) across ${mods_with} module(s).${NC}"

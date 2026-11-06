@@ -65,8 +65,13 @@ module_init() {
 _clean_hostnames() {
     local file=$1
     [[ -f "$file" ]] || return 0
-    grep -E '^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$' "$file" \
-        > "${file}.clean" 2>/dev/null && mv "${file}.clean" "$file" || true
+    # Always replace the file: grep exits 1 when NO line is a valid hostname,
+    # and a "grep > f.clean && mv" chain would then skip the mv and leave the
+    # file full of tool error strings (e.g. "Error fetching subdomains ...:
+    # invalid API key") - exactly the case this filter exists for.
+    { grep -E '^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$' "$file" 2>/dev/null || true; } \
+        > "${file}.clean"
+    mv -f "${file}.clean" "$file"
 }
 
 # ---------- Stage 1: passive collection ----------
@@ -205,6 +210,11 @@ _permute() {
 # ---------- Stage 5: merge ----------
 _merge() {
     # All discovered names -> subdomains.txt (the downstream contract for httpx).
+    # The supplied domain is itself in scope, but passive sources rarely list
+    # the apex, so without this it was never probed/crawled unless some source
+    # happened to return it - and with no passive hits the entire web chain
+    # downstream ran on empty input.
+    printf '%s\n' "$DOMAIN" >> "$SUBDOMAINS_FILE"
     for f in "$BRUTE_FILE" "$PERM_FILE"; do
         [[ -s "$f" ]] && cat "$f" >> "$SUBDOMAINS_FILE"
     done

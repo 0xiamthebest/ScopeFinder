@@ -86,7 +86,12 @@ module_run() {
         done
 
         # Combine all trufflehog results
-        cat "${DIRS[SECRETS_ARTIFACTS]}"/trufflehog_*.txt > "${DIRS[SECRETS]}/${FILES[TRUFFLEHOG_ALL]}" 2>/dev/null || true
+        # Drop trufflehog's per-run banner (printed even with zero findings, so
+        # trufflehog_all.txt was never empty and looked like it had results)
+        # and squeeze the leftover blank lines.
+        cat "${DIRS[SECRETS_ARTIFACTS]}"/trufflehog_*.txt 2>/dev/null \
+            | grep -v 'TruffleHog\. Unearth your secrets' \
+            | cat -s | sed '/./,$!d' > "${DIRS[SECRETS]}/${FILES[TRUFFLEHOG_ALL]}" || true
     else
         log_warn "trufflehog not found - skipping"
     fi

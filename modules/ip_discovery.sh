@@ -15,8 +15,17 @@ module_run() {
     # Run godigger for IP discovery
     if command -v godigger &> /dev/null; then
         log_info "Running godigger for IP discovery..."
-        godigger -domain "$DOMAIN" -search ips -t 20 > "${DIRS[SCANS]}/${FILES[IPS_FROM_SOURCES]}" 2>/dev/null || true
-        dedupe_file "${DIRS[SCANS]}/${FILES[IPS_FROM_SOURCES]}"
+        # godigger prints per-source failures ("Error: urlscan: No results
+        # found", JSON decode errors on an HTML error page, ...) on stdout
+        # alongside results; keep only lines that are actually IP addresses.
+        local ips_out="${DIRS[SCANS]}/${FILES[IPS_FROM_SOURCES]}" godigger_raw
+        godigger_raw=$(godigger -domain "$DOMAIN" -search ips -t 20 </dev/null 2>/dev/null || true)
+        printf '%s\n' "$godigger_raw" | sed 's/[[:space:]]*$//' \
+            | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$|^[0-9a-fA-F]*:[0-9a-fA-F:]+$' > "$ips_out" || true
+        local godigger_errs
+        godigger_errs=$(printf '%s\n' "$godigger_raw" | grep -ciE '^error' || true)
+        [[ "${godigger_errs:-0}" -gt 0 ]] && log_warn "godigger reported ${godigger_errs} source error(s) during IP discovery"
+        dedupe_file "$ips_out"
     else
         log_warn "godigger not found - skipping IP discovery"
     fi

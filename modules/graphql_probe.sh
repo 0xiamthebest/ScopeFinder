@@ -266,11 +266,11 @@ module_run() {
         [[ -n "$slug" ]] || slug="endpoint"
 
         # Security audit (JSON report to stdout)
-        graphql-cop -t "$ep" -o json > "${DIRS[GRAPHQL_COP]}/${slug}.json" 2>>"$cop_err" || true
+        graphql-cop -t "$ep" -o json </dev/null > "${DIRS[GRAPHQL_COP]}/${slug}.json" 2>>"$cop_err" || true
 
         # SDL export (tool writes file only when introspection is enabled)
         local sdl_file="${DIRS[GRAPHQL_SDL]}/${slug}.gql"
-        graphql-cop -t "$ep" --export-schema "$sdl_file" >/dev/null 2>&1 || true
+        graphql-cop -t "$ep" --export-schema "$sdl_file" </dev/null >/dev/null 2>&1 || true
 
         if check_file "$sdl_file"; then
             ((sdl_count++))

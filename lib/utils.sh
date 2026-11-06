@@ -134,6 +134,18 @@ check_output() {
     return 0
 }
 
+# Run xnLinkFinder on a single input (file, directory, or URL).
+#   run_xnlinkfinder <input> [xnLinkFinder args...]
+# xnLinkFinder ignores -i entirely whenever stdin is not a TTY and reads its
+# input from stdin instead - so under any non-interactive run (cron/CI, a
+# `docker run` without -t, a piped invocation) `-i <dir>` silently processes
+# nothing and every output file comes back empty. Passing the input on stdin
+# is the one form that behaves identically with or without a TTY.
+run_xnlinkfinder() {
+    local input="$1"; shift
+    printf '%s\n' "$input" | xnLinkFinder "$@"
+}
+
 dedupe_file() {
     local file=$1
     if [[ -f "$file" ]]; then
@@ -193,7 +205,7 @@ MODULE() {
         local warn_rec="${DIRS[CHECKPOINTS_DIR]}/${module_name}.warnings"
         if [[ -s "$warn_rec" ]]; then
             local warn_n
-            warn_n=$(grep -c . "$warn_rec" 2>/dev/null || echo 0)
+            warn_n=$(grep -c . "$warn_rec" 2>/dev/null || true)
             echo -e "${YELLOW}⚠ Module completed with ${warn_n} warning(s)/error(s): ${module_name}${NC}"
             echo -e "${DIM}  (details: ${warn_rec})${NC}"
         else

@@ -30,8 +30,10 @@ module_run() {
     for folder in "${folders[@]}"; do
         log_info "Processing folder: $folder"
 
-        for src in "$folder"/*; do
-            [[ -f "$src" ]] || continue  # skip if not a file
+        # Recurse: katana's -srd store nests responses under a per-host
+        # subdirectory (<dir>/<host>/<hash>.txt), so a flat "$folder"/* glob
+        # only ever saw index.txt and missed every crawled page.
+        while IFS= read -r -d '' src; do
 
             while IFS= read -r -d '' block; do
                 [[ -z "$block" ]] && continue
@@ -50,12 +52,12 @@ module_run() {
                 # Append to output file
                 printf "%s\n\n" "$block" >> "$output_file"
             done < <(grep -Pzo '<script[^>]*>[\s\S]*?</script>' "$src" 2>/dev/null | grep -Pzv '<script[^>]*\bsrc=' 2>/dev/null)
-        done
+        done < <(find "$folder" -type f -print0 2>/dev/null)
     done
 
     # Count results
     local script_count=0
-    [[ -f "$output_file" ]] && script_count=$(grep -c '<script' "$output_file" 2>/dev/null || echo "0")
+    [[ -f "$output_file" ]] && script_count=$(grep -c '<script' "$output_file" 2>/dev/null || true)
 
     log_info "Extracted $script_count inline scripts with dynamic URL patterns"
 
