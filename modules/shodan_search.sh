@@ -39,6 +39,22 @@ _shodan_timeout_default() {
     esac
 }
 
+# Warn (recorded) when a Shodan API response is not a usable result set -
+# e.g. an HTML "401 Unauthorized" page for a bad key, or {"error": "..."} for
+# quota/plan limits. jq errors are otherwise swallowed, so an auth failure was
+# indistinguishable from "no results".
+_shodan_check_response() {
+    local file="$1" label="$2"
+    if jq -e '.matches' "$file" >/dev/null 2>&1; then
+        return 0
+    fi
+    local reason
+    reason=$(jq -r '.error // empty' "$file" 2>/dev/null)
+    [[ -z "$reason" ]] && reason=$(grep -oiE '<title>[^<]*</title>' "$file" 2>/dev/null | sed -E 's#</?title>##g' | head -1)
+    log_warn "Shodan ${label} query failed: ${reason:-unexpected response} (check SHODAN_API_KEY / plan)"
+    return 1
+}
+
 # Run a Shodan search for a specific organization and record the results.
 _shodan_scan_org() {
     local org="$1"
@@ -51,6 +67,7 @@ _shodan_scan_org() {
     # Search by organization
     curl -s "https://api.shodan.io/shodan/host/search?key=${SHODAN_API_KEY}&query=org:\"${encoded_org}\"" \
         > "${DIRS[SHODAN_ARTIFACTS]}/shodan_org_raw.json"
+    _shodan_check_response "${DIRS[SHODAN_ARTIFACTS]}/shodan_org_raw.json" "organization" || true
 
     # Extract IPs from org results
     jq -r '.matches[] | "\(.ip_str):\(.port)/\(.transport)"' "${DIRS[SHODAN_ARTIFACTS]}/shodan_org_raw.json" \
@@ -83,6 +100,7 @@ module_run() {
     local ssl_raw="${DIRS[SHODAN_ARTIFACTS]}/shodan_ssl_subject_raw.json"
     curl -s "https://api.shodan.io/shodan/host/search?key=${SHODAN_API_KEY}&query=ssl.cert.subject.cn:${encoded_domain}" \
         > "$ssl_raw"
+    _shodan_check_response "$ssl_raw" "SSL-certificate" || true
 
     # Extract IPs from SSL cert results
     jq -r '.matches[] | "\(.ip_str):\(.port)/\(.transport)"' "$ssl_raw" \

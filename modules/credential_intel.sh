@@ -21,8 +21,15 @@ module_run() {
     # Hunter.io search
     if [[ -n "${HUNTERIO_API_KEY:-}" ]]; then
         log_info "Searching Hunter.io..."
-        curl -s "https://api.hunter.io/v2/domain-search?domain=${DOMAIN}&api_key=${HUNTERIO_API_KEY}" | \
-            jq -r '.data.emails[].value' >> "$EMAILS_FILE" 2>/dev/null || true
+        mkdir -p "${DIRS[CREDENTIALS]}/artifacts"
+        local hunter_response="${DIRS[CREDENTIALS]}/artifacts/hunter_raw.json"
+        curl -s "https://api.hunter.io/v2/domain-search?domain=${DOMAIN}&api_key=${HUNTERIO_API_KEY}" \
+            > "$hunter_response" 2>/dev/null || true
+        # Surface API errors (bad key, quota) instead of reporting "0 emails".
+        if ! jq -e '.data.emails' "$hunter_response" >/dev/null 2>&1; then
+            log_warn "Hunter.io query failed: $(jq -r '[.errors[]? | .details // .id] | join("; ") // empty' "$hunter_response" 2>/dev/null | head -c 200)"
+        fi
+        jq -r '.data.emails[].value' "$hunter_response" >> "$EMAILS_FILE" 2>/dev/null || true
     else
         log_warn "Skipping Hunter.io - HUNTERIO_API_KEY not set"
     fi
@@ -36,6 +43,10 @@ module_run() {
             --header "Dehashed-Api-Key: $DEHASHED_API_KEY" \
             --header "Content-Type: application/json" \
             --data-raw "{\"query\": \"$DOMAIN\", \"size\": 10000, \"wildcard\": true, \"regex\": false, \"de_dupe\": true}" > "$dehashed_response" 2>/dev/null || true
+
+        if ! jq -e 'has("entries")' "$dehashed_response" >/dev/null 2>&1; then
+            log_warn "DeHashed query failed: $(jq -r '.error // .message // empty' "$dehashed_response" 2>/dev/null | head -c 200)"
+        fi
 
         # Extract emails
         jq -r '.entries[] | .email[]? | select(. != null and . != "")' "$dehashed_response" >> "$EMAILS_FILE" 2>/dev/null || true
