@@ -51,6 +51,13 @@ module_init() {
     BRUTE_FILE="${DIRS[SUBDOMAINS]}/brute_subdomains.txt"
     PERM_FILE="${DIRS[SUBDOMAINS]}/permutation_subdomains.txt"
     WILDCARD_ROOTS_FILE="${DIRS[SUBDOMAINS]}/wildcard_roots.txt"
+
+    # Prefer the freshly validated resolver list from resolver_refresh over the
+    # image's baseline list, unless SF_RESOLVERS explicitly pins one.
+    local validated_resolvers="${DIRS[RESOLVERS]}/${FILES[RESOLVERS]}"
+    if [[ -z "${SF_RESOLVERS:-}" ]] && check_file "$validated_resolvers"; then
+        RESOLVERS_FILE="$validated_resolvers"
+    fi
 }
 
 # Keep only well-formed hostnames; drop DNS-only (_dmarc, _domainkey ...),
@@ -66,9 +73,16 @@ _clean_hostnames() {
 _passive_collect() {
     log_info "[passive] Collecting from passive sources for: $DOMAIN"
 
-    # subfinder (now keyed via .config/subfinder/provider-config.yaml)
+    # subfinder (now keyed via .config/subfinder/provider-config.yaml). Pass the
+    # active resolver list (validated by resolver_refresh when present) so
+    # subfinder's active resolution doesn't degrade on stale resolvers.
     log_info "[passive] subfinder..."
-    subfinder -d "$DOMAIN" -all -recursive -silent >> "$SUBDOMAINS_FILE" 2>/dev/null || true
+    local resolver_flag=()
+    if check_file "$RESOLVERS_FILE"; then
+        resolver_flag=(-rlist "$RESOLVERS_FILE")
+        log_info "[passive] Using $(grep -c . "$RESOLVERS_FILE") resolvers (-rlist $RESOLVERS_FILE)"
+    fi
+    subfinder -d "$DOMAIN" -all -recursive -silent "${resolver_flag[@]}" >> "$SUBDOMAINS_FILE" 2>/dev/null || true
 
     # godigger
     log_info "[passive] godigger..."
@@ -225,6 +239,12 @@ module_run() {
     [[ -f "$WILDCARD_FILE" ]]   && wild_count=$(wc -l < "$WILDCARD_FILE")
 
     log_info "Found $sub_count total subdomains ($res_count resolvable, $wild_count wildcard entries)"
+
+    # Everything downstream keys off this file. If enumeration produced nothing,
+    # surface it as a recorded warning rather than silently checkpointing clean
+    # and letting every later module quietly no-op on empty input.
+    check_output "$SUBDOMAINS_FILE" "subdomain enumeration" || true
+
     return 0
 }
 
