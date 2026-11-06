@@ -184,7 +184,7 @@ module_run() {
             && log_info "Updated shared resolver cache: $cache_file"
     fi
 
-    log_info "Resolver list ready: $out_file ($(grep -c . "$out_file" 2>/dev/null || echo 0) resolvers)"
+    log_info "Resolver list ready: $out_file ($(grep -c . "$out_file" 2>/dev/null || true) resolvers)"
     return 0
 }
 

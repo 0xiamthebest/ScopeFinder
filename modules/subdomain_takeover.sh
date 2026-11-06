@@ -47,7 +47,7 @@ module_run() {
 
     # Count results
     local finding_count=0
-    [[ -f "$results_file" ]] && finding_count=$(grep -c . "$results_file" 2>/dev/null || echo "0")
+    [[ -f "$results_file" ]] && finding_count=$(grep -c . "$results_file" 2>/dev/null || true)
     log_info "Found $finding_count potential subdomain takeover findings"
 
     return 0

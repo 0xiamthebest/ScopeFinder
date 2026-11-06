@@ -157,7 +157,7 @@ show_module_status() {
         local warn_rec="${DIRS[CHECKPOINTS_DIR]}/${module}.warnings"
         if [[ -s "$warn_rec" && "$status" != "❌ Not started" ]]; then
             local warn_n
-            warn_n=$(grep -c . "$warn_rec" 2>/dev/null || echo 0)
+            warn_n=$(grep -c . "$warn_rec" 2>/dev/null || true)
             status="${status} (⚠ ${warn_n})"
         fi
 
