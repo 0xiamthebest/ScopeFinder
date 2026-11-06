@@ -183,6 +183,13 @@ module_run() {
         elif [[ -f "$cp_start" ]]; then
             st="in_progress"; at="null"
         fi
+        # This module is necessarily mid-run while it writes the summary (its
+        # .done checkpoint lands only after module_run returns), so it would
+        # otherwise always report itself "in_progress". Record it as complete
+        # as of this summary's generation time.
+        if [[ "$m" == "$MODULE_NAME" ]]; then
+            st="complete"; at="$now_epoch"
+        fi
         [[ "$at" =~ ^[0-9]+$ ]] || at="null"
         warn_n=0
         [[ -s "$cp_warn" ]] && warn_n="$(_summary_count "$cp_warn")"
