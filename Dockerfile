@@ -188,11 +188,25 @@ RUN set -ex && \
     go install -v github.com/s0md3v/smap/cmd/smap@v1.0.0-beta && \
     go install -v github.com/incogbyte/shosubgo@ccb6dc7bf0ef130fef0a6948acfec1235b26d81f && \
     go install -v github.com/g0ldencybersec/CloudRecon@8893d40372cee7b55e2b20073283c7bb812f2a25 && \
-    go install -v github.com/projectdiscovery/asnmap/cmd/asnmap@v1.1.1 && \
+    go install -v github.com/projectdiscovery/asnmap/cmd/asnmap@v1.2.0 && \
     go install -v github.com/denandz/sourcemapper@f739bd5dd266b0d0e2cfa17c0a132f79bd9a5ba9 && \
     go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@v3.11.1 && \
     go install -v github.com/BishopFox/jsluice/cmd/jsluice@0ddfab153e060a9eeaded4d8669233f7c071e7e4 && \
+    go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@v1.3.1 && \
+    go install -v github.com/d3mondev/puredns/v2@v2.1.1 && \
+    go install -v github.com/projectdiscovery/alterx/cmd/alterx@v0.1.0 && \
     echo "Public Go tools installed"
+
+# ============================================
+# Install massdns (puredns backend — not a Go tool)
+# ============================================
+RUN set -ex && \
+    git clone https://github.com/blechschmidt/massdns.git /tmp/massdns && \
+    git -C /tmp/massdns checkout 30c380908b4f9afd0931d3d83f85884844831846 && \
+    make -C /tmp/massdns && \
+    cp /tmp/massdns/bin/massdns /usr/local/bin/massdns && \
+    rm -rf /tmp/massdns && \
+    test -x /usr/local/bin/massdns && echo "massdns installed"
 
 # ============================================
 # Bake nuclei templates into the image (faster runtime updates)
@@ -253,7 +267,10 @@ RUN set -ex && \
 # ============================================
 # 3.8.28 is the newest wpscan supporting the base image's Ruby (3.1); 4.x needs
 # Ruby >= 3.3. Bump in lockstep with a Ruby upgrade.
-RUN gem install wpscan -v 3.8.28 && \
+# nokogiri (a wpscan dep) otherwise compiles its own vendored libxslt and fails
+# to link libexslt.a; the system libxml2-dev/libxslt1-dev are installed above, so
+# force nokogiri to build against them.
+RUN NOKOGIRI_USE_SYSTEM_LIBRARIES=1 gem install wpscan -v 3.8.28 && \
     wpscan --version && \
     echo "Ruby tools installed"
 
@@ -270,8 +287,16 @@ RUN set -ex && \
 # ============================================
 RUN mkdir -p /wordlists && \
     cd /wordlists && \
-    wget -q https://raw.githubusercontent.com/danielmiessler/SecLists/2026.1/Discovery/Web-Content/burp-parameter-names.txt && \
+    wget -q https://raw.githubusercontent.com/danielmiessler/SecLists/4afe4d3de0a5d227c59ae2f162d22b93b4c27bfd/Discovery/Web-Content/burp-parameter-names.txt && \
+    wget -q -O dns-subdomains.txt https://raw.githubusercontent.com/danielmiessler/SecLists/4afe4d3de0a5d227c59ae2f162d22b93b4c27bfd/Discovery/DNS/subdomains-top1million-110000.txt && \
     echo "Wordlists downloaded"
+
+# ============================================
+# Baseline DNS resolvers for puredns/dnsx (validate+refresh at runtime)
+# ============================================
+RUN mkdir -p /resolvers && \
+    wget -q -O /resolvers/resolvers.txt https://raw.githubusercontent.com/trickest/resolvers/main/resolvers.txt && \
+    echo "Resolvers downloaded"
 
 # ============================================
 # Set up final environment variables and PATH
@@ -285,30 +310,25 @@ ENV PATH="/usr/local/go/bin:/root/go/bin:/root/.cargo/bin:/root/.local/bin:$PATH
 # ============================================
 # Verify all tools are installed
 # ============================================
+# Presence-check every tool with `command -v`. The previous version piped some
+# checks through `head`/`2>/dev/null` without `pipefail`, so the pipeline's exit
+# status was `head`'s (always 0) - a missing or broken tool passed verification
+# and the image built "successfully" with tools absent. A simple presence loop
+# fails the build on the first missing binary.
 RUN set -ex && \
     echo "=== Verifying tool installation ===" && \
-    subfinder -version 2>/dev/null | head -1 && \
-    httpx -version 2>/dev/null | head -1 && \
-    katana -version 2>/dev/null | head -1 && \
-    asnmap -version 2>/dev/null | head -1 && \
-    sourcemapper -version 2>/dev/null | head -1 && \
-    nuclei -version 2>/dev/null | head -1 && \
-    smap -h 2>&1 | head -1 && \
-    which crtsh-tool && \
-    which jshunter && \
-    which godigger && \
-    which urldedup && \
-    which waymore && \
-    which linkfinder && \
-    which xnLinkFinder && \
-    which msftrecon && \
-    which uro && \
-    which shosubgo && \
-    which CloudRecon && \
-    which jsluice && \
-    wpscan --version | head -1 && \
-    x8 --version && \
-    trufflehog --version && \
+    for tool in \
+        subfinder httpx katana asnmap sourcemapper nuclei smap \
+        crtsh-tool jshunter godigger urldedup \
+        waymore linkfinder xnLinkFinder msftrecon uro \
+        shosubgo CloudRecon jsluice wpscan x8 trufflehog \
+        dnsx alterx puredns massdns; do \
+        if ! command -v "$tool" >/dev/null 2>&1; then \
+            echo "ERROR: required tool not installed: $tool" >&2; \
+            exit 1; \
+        fi; \
+        echo "ok: $tool -> $(command -v "$tool")"; \
+    done && \
     echo "=== All tools verified successfully ==="
 
 # ============================================
