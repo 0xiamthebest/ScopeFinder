@@ -35,6 +35,18 @@ _summary_count() {
     echo "${n:-0}"
 }
 
+# Count lines matching an extended regex; 0 if the file is missing/empty.
+# Used where one finding spans several lines (e.g. trufflehog's text output,
+# where each finding opens with "Found verified result" / "Found unverified
+# result" followed by detector/raw/file lines) so a plain line count would
+# overstate findings - and would count tool banners as findings.
+_summary_count_matching() {
+    local file="$1" re="$2" n
+    [[ -f "$file" ]] || { echo 0; return; }
+    n="$(grep -cE "$re" "$file" 2>/dev/null || true)"
+    echo "${n:-0}"
+}
+
 # Emit a JSON array of the non-empty, trimmed lines of a file (compact, one
 # call). Missing/empty file -> []. Lines are sorted & de-duplicated so the
 # array is a stable set, which keeps diffs meaningful.
@@ -115,8 +127,8 @@ module_run() {
     local wordpress="${DIRS[WORDPRESS]}/${FILES[WORDPRESS_SITES]}"
 
     local js_endpoints="${DIRS[JS_ENDPOINTS]}/${FILES[JS_ENDPOINTS]}"
-    local urls_wp="${DIRS[URLS]}/${FILES[URLS_WITH_PARAMS_UNIQ]}"
-    local urls_wop="${DIRS[URLS]}/${FILES[URLS_WITHOUT_PARAMS_UNIQ]}"
+    local urls_wp="${DIRS[URLS_ARTIFACTS]}/${FILES[URLS_WITH_PARAMS_UNIQ]}"
+    local urls_wop="${DIRS[URLS_ARTIFACTS]}/${FILES[URLS_WITHOUT_PARAMS_UNIQ]}"
     local urls_live_wp="${DIRS[URLS]}/${FILES[LIVE_URLS_WITH_PARAMS]}"
     local urls_live_wop="${DIRS[URLS]}/${FILES[LIVE_URLS_WITHOUT_PARAMS]}"
     local params="${DIRS[PARAMETERS]}/${FILES[PARAMETERS]}"
@@ -213,7 +225,7 @@ module_run() {
         --argjson api_docs "$api_json" \
         --argjson wordpress "$wordpress_json" \
         --argjson secrets_js "$(_summary_count "$secrets_js")" \
-        --argjson secrets_th "$(_summary_count "$secrets_th")" \
+        --argjson secrets_th "$(_summary_count_matching "$secrets_th" '^Found (un)?verified result')" \
         --argjson secrets_jl "$(_summary_count "$secrets_jl")" \
         --argjson emails_n "$(_summary_count "$emails")" \
         --argjson leak_ep "$(_summary_count "$leak_ep")" \
