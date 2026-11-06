@@ -1,0 +1,42 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":pinDigests"
+  ],
+  "labels": ["dependencies"],
+  "schedule": ["before 6am on monday"],
+  "packageRules": [
+    {
+      "description": "Group all Dockerfile tool bumps into one reviewable PR",
+      "matchFileNames": ["Dockerfile"],
+      "groupName": "scopefinder toolchain"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Pinned `go install` semver tools in the Dockerfile",
+      "fileMatch": ["(^|/)Dockerfile$"],
+      "matchStrings": ["go install -v (?<depName>[^@\\s]+)@(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+[^\\s]*)"],
+      "datasourceTemplate": "go"
+    },
+    {
+      "customType": "regex",
+      "description": "pipx tools installed from a pinned git tag",
+      "fileMatch": ["(^|/)Dockerfile$"],
+      "matchStrings": ["git\\+https://github\\.com/(?<depName>[^/]+/[^/.]+)\\.git@(?<currentValue>v[0-9][^\"\\s]*)"],
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "cargo and gem pins",
+      "fileMatch": ["(^|/)Dockerfile$"],
+      "matchStrings": [
+        "cargo install (?<depName>[a-z0-9_-]+) --version (?<currentValue>[0-9][^\\s]*)",
+        "gem install (?<depName>[a-z0-9_-]+) -v (?<currentValue>[0-9][^\\s]*)"
+      ],
+      "datasourceTemplate": "{{#if (equals depName 'wpscan')}}rubygems{{else}}crate{{/if}}"
+    }
+  ]
+}
