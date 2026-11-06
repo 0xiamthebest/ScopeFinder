@@ -52,8 +52,29 @@ module_run() {
                -f cli-no-color \
                --disable-tls-checks \
                --update \
-               --url "$SUBDOMAIN" 2>/dev/null || true
+               --url "$SUBDOMAIN" </dev/null 2>/dev/null || true
+        # (</dev/null: keep wpscan off the loop's stdin so it can never swallow
+        # the remaining lines of the site list.)
     done < "$WP_SITES"
+
+    # Prune sites WPScan positively identified as NOT WordPress, so
+    # wordpress_sites.txt (and summary.json) lists only real WordPress sites.
+    # The list can contain unconfirmed candidates - notably the --app target,
+    # which is seeded unconditionally. Sites whose scan errored or produced no
+    # output are kept (unknown is not the same as "not WordPress").
+    local confirmed_tmp="${WP_SITES}.tmp" pruned=0
+    : > "$confirmed_tmp"
+    while read -r SUBDOMAIN; do
+        [[ -z "$SUBDOMAIN" ]] && continue
+        local scan_out="${DIRS[WORDPRESS_SCANS]}/wpscan_$(echo "$SUBDOMAIN" | sed 's|https\?://||g; s|/|_|g').txt"
+        if grep -q 'does not seem to be running WordPress' "$scan_out" 2>/dev/null; then
+            pruned=$((pruned + 1))
+        else
+            printf '%s\n' "$SUBDOMAIN" >> "$confirmed_tmp"
+        fi
+    done < "$WP_SITES"
+    mv "$confirmed_tmp" "$WP_SITES"
+    [[ $pruned -gt 0 ]] && log_info "Removed $pruned non-WordPress site(s) from $(basename "$WP_SITES")"
 
     # Count scan results
     local scan_count=$(find "${DIRS[WORDPRESS_SCANS]}" -name "*.txt" -type f | wc -l)
