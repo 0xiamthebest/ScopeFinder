@@ -244,6 +244,18 @@ seed_app_targets() {
 main() {
     parse_args "$@"
 
+    # Run mode: a *full* pipeline run (no targeted --replay / --replay-from) lets
+    # modules turn on their thorough-but-slower stages by default (e.g. DNS
+    # brute/permute in subdomain_enum) — this is the pre-engagement baseline.
+    # A targeted replay is treated as a fast a-la-carte refresh (those stages
+    # default off). Explicit per-stage env vars (e.g. SF_DNS_BRUTE) always win.
+    if [[ -z "$REPLAY_MODULES" && -z "$FROM_MODULE" ]]; then
+        SF_FULL_RUN=1
+    else
+        SF_FULL_RUN=0
+    fi
+    export SF_FULL_RUN
+
     # Validate environment
     validate_environment
 

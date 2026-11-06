@@ -1,0 +1,9 @@
+# The Dockerfile builds all tools from source (go install / git clone / wget) and
+# has no COPY/ADD — nothing from the repo is baked into the image. ScopeFinder.sh,
+# lib/, modules/ and .config/ are bind-mounted at runtime by the sf-run/ScopeFinder
+# host functions, not at build time. So keep the entire repo out of the build
+# context: smaller/faster builds, and .config (which may hold API keys) never
+# enters the image layers. This also avoids build-context read errors on files
+# left root-owned by a prior root/sudo run.
+*
+!Dockerfile
