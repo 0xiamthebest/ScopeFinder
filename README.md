@@ -250,6 +250,10 @@ Notes:
   full scan reuses that run's discovered hosts rather than overwriting them.
 - `--app` composes with the other flags; combine with `--fresh` to re-run the
   app modules from scratch against the seeded target.
+- Output stays clean: the folders owned solely by the skipped modules (`asn`,
+  `cloud`, `shodan`, `scans`, `credentials`, `resolvers`, `subdomain_takeover`)
+  are **not created** in `--app` mode, so an app-scoped run no longer leaves a
+  litter of empty infrastructure directories.
 
 ## 📂 Run Output
 
