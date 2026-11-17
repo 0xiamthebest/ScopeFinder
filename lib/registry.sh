@@ -62,6 +62,32 @@ declare -a APP_EXCLUDE_MODULES=(
     "asn_recon"              # SSL/cert analysis across IP ranges (infra)
 )
 
+# Output directories owned *solely* by the --app-excluded modules above. Since
+# those modules never run in --app mode, init_workspace skips creating these so
+# an app-scoped run doesn't litter the output with empty asn/cloud/shodan/...
+# folders. Only keys that init_workspace creates AND that no application-layer
+# module writes to are listed here. Notably absent: SUBDOMAINS (seeded by --app
+# itself) and HTTPX/WORDPRESS (also used by app-layer modules).
+declare -a APP_EXCLUDE_DIRS=(
+    "SHODAN"              # shodan_search
+    "ASN"                 # asn_discovery / asn_port_scan / asn_recon
+    "CLOUD"               # cloud_recon
+    "CREDENTIALS"         # credential_intel
+    "SCANS"               # ip_discovery / smap_port_scan
+    "SUBDOMAIN_TAKEOVER"  # subdomain_takeover
+    "RESOLVERS"           # resolver_refresh (+ subdomain_enum)
+)
+
+# True if $1 is a directory key skipped in --app mode (owned only by an
+# excluded network/infra module). Used by init_workspace.
+is_app_excluded_dir() {
+    local key=$1 d
+    for d in "${APP_EXCLUDE_DIRS[@]}"; do
+        [[ "$key" == "$d" ]] && return 0
+    done
+    return 1
+}
+
 # Remove the infrastructure/network modules from an ordered module array in
 # place, leaving only the application-layer modules (used for --app mode).
 filter_app_modules() {

@@ -186,10 +186,15 @@ init_workspace() {
             WORDPRESS|WORDPRESS_SCANS|*_ARTIFACTS|*_DATA|*_OUTPUT|*_SCREENSHOT|*_RESPONSE|*_SMAP|JS_*|*_LINKFINDER|*_BURP)
                 continue
                 ;;
-            *)
-                mkdir -p "${DIRS[$dir_key]}"
-                ;;
         esac
+
+        # In --app mode the network/infra modules don't run, so don't create the
+        # folders only they would write to (no empty asn/cloud/shodan/... dirs).
+        if [[ "$APP_MODE" == "true" ]] && is_app_excluded_dir "$dir_key"; then
+            continue
+        fi
+
+        mkdir -p "${DIRS[$dir_key]}"
     done
 
     log_info "Workspace initialized at: ${DIRS[WORK_DIR]}"
